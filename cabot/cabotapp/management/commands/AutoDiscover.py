@@ -20,13 +20,30 @@ IGNORED_HOSTS = [
   "testing.ofertia.com"
 ]
 
-def isValidHost(name):
-  if name.replace("_",".") in IGNORED_HOSTS: return False
-  regexp=re.compile(".*(_\w)+")
-  return regexp.match(name)
+DOMAINS = {
+  'se': 'bonial.se',
+  'dk': 'bonial.dk',
+  'no': 'bonial.no',
+  'es': 'ofertia.com',
+  'mx': 'ofertia.com.mx',
+  'co': 'ofertia.com.co',
+  'cl': 'ofertia.cl',
+  'me': 'mesos'
+}
 
-def hasOwnDomain(instance):
-  return instance.find("-") == -1
+
+def getServerInfo(name):
+  pattern="^(\w{2})(-\w+-\d)_?(\w+_\w+)?"
+  result = re.match(pattern, name)
+  if not result:
+    server = name.replace("_",".")
+    domain = server
+  else:
+    country = result.group(1)
+    server = "%s%s" % (result.group(1), result.group(2))
+    domain = DOMAINS[country]
+
+  return server,domain
   
 def FormatMountPoinName(name):
   return "/"+name[3:].replace("-","/")
@@ -55,20 +72,21 @@ class Command(BaseCommand):
   def handle(self, *args, **options):
     user = User.objects.get(username="admin");
 
+    servers = dict()
     # search for all servers
     metrics = get_matching_metrics("servers.*"); 
     for metric in metrics["metrics"]:
-      if not isValidHost(metric["name"]): continue
-      server, domain  = metric["name"].split("_",1)
-      domain = domain.replace("_",".")
-      address = ".".join((server,domain))
-      service_url = "www."+domain
-      if hasOwnDomain(server):
-        domain = ".".join((server,domain))
-        address = domain
-        service_url = domain
+      print metric
+      server, domain = getServerInfo(metric['name'])
+      if server == domain:
+        address = server
+        service_url = server
+      else:
+        address = server
+        service_url = "www."+domain
+
       server_path = metric["path"]
-      print server, domain, server_path
+      print server, domain, service_url, server_path
 
       # get or create service
       service, created = Service.objects.get_or_create(name=domain, defaults={"email_alert": True, "hipchat_alert": False})
